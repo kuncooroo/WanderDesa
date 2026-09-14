@@ -1,0 +1,19 @@
+---
+description: Laravel domain conventions — thin HTTP, Actions own money/ticket rules
+globs: backend/**/*.php
+alwaysApply: false
+---
+
+# Laravel domain
+
+- Thin controllers: authorize → Form Request → Action → API Resource / redirect
+- Livewire calls the **same** Actions as `/api/v1`. No second pricing/payment engine
+- Prefer Actions (`app/Actions/{Domain}`) and Services (`app/Services/{Domain}`)
+- **No** Repository layer by default. Use Eloquent inside Actions/Services
+- Form Requests validate input and reject client money authority fields
+- Policies/Gates enforce `docs/07-RBAC.md`. Deny by default
+- Enums for statuses. Money columns are BIGINT IDR
+- Multi-step money/ticket/check-in work uses DB transactions
+- Never edit an existing production migration; add a new one
+- Do not soft-delete payments, tickets, check-ins, or audit rows
+- Prefer Laravel-native packages. Pint when formatting PHP

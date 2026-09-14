@@ -1,0 +1,21 @@
+# Example: Supervisor programs (placeholders)
+
+```ini
+[program:wanderdesa-worker]
+command=php /var/www/wanderdesa/backend/artisan queue:work --sleep=1 --tries=1 --max-time=3600
+directory=/var/www/wanderdesa/backend
+user=www-data
+autostart=true
+autorestart=true
+stopwaitsecs=60
+redirect_stderr=true
+stdout_logfile=/var/log/wanderdesa-worker.log
+```
+
+Scheduler stays on cron (every minute):
+
+```cron
+* * * * * www-data cd /var/www/wanderdesa/backend && php artisan schedule:run >> /dev/null 2>&1
+```
+
+Do not run `queue:work` without `schedule:run` — unpaid expiry and payment reconcile would stop.

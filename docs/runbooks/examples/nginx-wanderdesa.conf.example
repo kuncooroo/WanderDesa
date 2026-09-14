@@ -1,0 +1,46 @@
+# Example: nginx TLS terminator (placeholders)
+
+Replace `HOST` and certificate paths at provision time. PHP is not exposed on the public internet.
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name HOST;
+
+    ssl_certificate     /etc/ssl/certs/HOST.pem;
+    ssl_certificate_key /etc/ssl/private/HOST.key;
+
+    root /var/www/wanderdesa/backend/public;
+    index index.php;
+
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options SAMEORIGIN;
+    add_header Referrer-Policy strict-origin-when-cross-origin;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /up {
+        try_files $uri /index.php?$query_string;
+        access_log off;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+
+server {
+    listen 80;
+    server_name HOST;
+    return 301 https://$host$request_uri;
+}
+```
+
+OS, PHP-FPM socket, and certificate issuer are **TBD at provision**. Laravel already `trustProxies: *` and forces HTTPS when `APP_ENV=production`.

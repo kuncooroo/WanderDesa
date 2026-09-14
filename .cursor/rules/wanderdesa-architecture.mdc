@@ -1,0 +1,17 @@
+---
+description: WanderDesa system shape — Laravel authority, two clients, no split-brain
+alwaysApply: true
+---
+
+# WanderDesa architecture
+
+WanderDesa is one Integrated Tourism System. Laravel is the business authority. Flutter Kiosk and Blade/Livewire Dashboard are clients.
+
+- Repo layout: `backend/` · `kiosk/` · `docs/` · `.cursor/` · `CURSOR.md`
+- Do **not** create a Staff Flutter app (`staff-app/`) for MVP
+- Do **not** duplicate pricing, totals, payment status, ticket validity, check-in, or RBAC in Flutter, Blade, Livewire, or JS
+- Clients collect input and render server results; Laravel decides and persists
+- Money is IDR integer (whole Rupiah). Reject client authoritative money fields
+- Shared Actions/Services serve both kiosk API and dashboard Livewire
+- If code would conflict with `docs/` business rules: **STOP** and explain; do not invent a new rule
+- Normative docs: `docs/01`–`11`. Follow `CURSOR.md` source-of-truth hierarchy

@@ -1,0 +1,19 @@
+---
+description: Flutter kiosk is a physical terminal client, not a consumer app
+globs: kiosk/**/*
+alwaysApply: false
+---
+
+# Flutter kiosk client
+
+Treat `kiosk/` as a **physical terminal** (Advan A10 class, landscape, locked fullscreen), not a pocket mobile app.
+
+- Call Laravel `/api/v1`. Parse DTOs. Do not decide PAID / ISSUED / USED locally
+- Local storage is UI/session/idempotency/recovery only — never the ledger
+- Idempotency keys on critical writes (order, payment)
+- Map API errors honestly: pending, fail, recovery. Never fake success offline
+- Print **server** print-payload. Printer failure after PAID → show QR + staff reprint; do not void payment
+- Scanner (if any) is input only; Laravel validates and checks in
+- Respect device registration, heartbeat, maintenance, and remote disable from the server
+- Bahasa Indonesia first; large touch targets
+- No secrets hardcoded in source

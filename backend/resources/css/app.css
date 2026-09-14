@@ -1,0 +1,227 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../views/**/*.blade.php';
+@source '../js/**/*.js';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+    --color-wd-bg: #f4f6f5;
+    --color-wd-card: #ffffff;
+    --color-wd-ink: #171717;
+    --color-wd-muted: #6b7280;
+    --color-wd-accent: #1f5c45;
+    --color-wd-accent-dark: #174a37;
+    --color-wd-border: #e5e7eb;
+    --color-wd-sidebar: #f3f4f6;
+}
+
+@layer base {
+    :root {
+        --shell-bg: var(--color-wd-bg);
+        --shell-card: var(--color-wd-card);
+        --shell-ink: var(--color-wd-ink);
+        --shell-muted: var(--color-wd-muted);
+        --shell-accent: var(--color-wd-accent);
+        --shell-accent-dark: var(--color-wd-accent-dark);
+        --shell-border: var(--color-wd-border);
+        --shell-danger: #b91c1c;
+        --bg: var(--shell-bg);
+        --card: var(--shell-card);
+        --ink: var(--shell-ink);
+        --muted: var(--shell-muted);
+        --accent: var(--shell-accent);
+        --accent-dark: var(--shell-accent-dark);
+        --border: var(--shell-border);
+        --danger: var(--shell-danger);
+        accent-color: var(--shell-accent);
+    }
+
+    .dark {
+        --color-wd-bg: #101614;
+        --color-wd-card: #1a221e;
+        --color-wd-ink: #f0f4f1;
+        --color-wd-muted: #b0b8b3;
+        --color-wd-accent: #5fbf96;
+        --color-wd-accent-dark: #4aa882;
+        --color-wd-border: #334039;
+        --color-wd-sidebar: #141b17;
+        --shell-danger: #fca5a5;
+    }
+
+    body {
+        @apply bg-wd-bg font-sans text-wd-ink antialiased;
+    }
+
+    [x-cloak] {
+        display: none !important;
+    }
+
+    /* Inline codes / chips stay readable in both themes */
+    code {
+        @apply rounded border border-wd-border bg-wd-sidebar px-1 py-0.5 font-mono text-[0.85em] text-wd-ink;
+    }
+
+    /* Soften hard-coded light grays used across blades */
+    .dark :where(.bg-gray-50, .bg-gray-100) {
+        background-color: var(--color-wd-sidebar) !important;
+        color: var(--color-wd-ink);
+    }
+
+    .dark :where(.hover\:bg-gray-50:hover, .hover\:bg-gray-100:hover) {
+        background-color: color-mix(in srgb, var(--color-wd-ink) 8%, var(--color-wd-card)) !important;
+    }
+
+    .dark :where(.text-red-700, .text-red-800) {
+        color: #fca5a5 !important;
+    }
+
+    .dark :where(.text-emerald-700, .text-emerald-800) {
+        color: #6ee7b7 !important;
+    }
+}
+
+@layer components {
+    .page {
+        @apply w-full max-w-6xl;
+    }
+
+    .page-title {
+        @apply text-2xl font-semibold tracking-tight text-wd-ink;
+    }
+
+    .page-desc {
+        @apply mt-1 text-sm text-wd-muted;
+    }
+
+    .card {
+        @apply rounded-xl border border-wd-border bg-wd-card p-5 shadow-sm sm:p-6;
+    }
+
+    .muted {
+        @apply text-wd-muted;
+    }
+
+    .field {
+        @apply block w-full;
+    }
+
+    .field-label {
+        @apply mb-1.5 block text-sm font-medium text-wd-muted;
+    }
+
+    .field-input,
+    .field-select,
+    .field-textarea {
+        @apply w-full rounded-lg border border-wd-border bg-wd-card px-3 py-2 text-sm text-wd-ink outline-none transition
+            focus:border-wd-accent focus:ring-2 focus:ring-wd-accent/20;
+    }
+
+    .btn {
+        @apply inline-flex items-center justify-center rounded-md border border-wd-border bg-wd-card px-2.5 py-1 text-xs font-medium leading-5 text-wd-ink transition hover:bg-wd-sidebar disabled:cursor-not-allowed disabled:opacity-60;
+    }
+
+    .btn-sm {
+        @apply px-2 py-0.5 text-[11px] leading-4;
+    }
+
+    .btn-primary {
+        @apply border-wd-accent bg-wd-accent text-white hover:border-wd-accent-dark hover:bg-wd-accent-dark;
+    }
+
+    .btn-danger {
+        @apply border-red-700 text-red-700 hover:bg-red-50 dark:border-red-400 dark:text-red-300 dark:hover:bg-red-950/40;
+    }
+
+    .btn-ghost {
+        @apply border-transparent bg-transparent px-1 py-0.5 text-xs text-wd-accent underline-offset-2 hover:underline;
+    }
+
+    .btn-seg {
+        @apply rounded-md border border-wd-border bg-wd-card px-2.5 py-1 text-xs font-medium text-wd-muted hover:bg-wd-sidebar;
+    }
+
+    .btn-seg-active {
+        @apply border-wd-accent bg-wd-accent text-white hover:bg-wd-accent-dark;
+    }
+
+    .alert {
+        @apply mb-4 rounded-lg px-4 py-3 text-sm;
+    }
+
+    .alert-error {
+        @apply border border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200;
+    }
+
+    .alert-info {
+        @apply border border-wd-border bg-wd-sidebar text-wd-ink;
+    }
+
+    .alert-warn {
+        @apply border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100;
+    }
+
+    .stat-card {
+        @apply rounded-xl border border-wd-border bg-wd-card p-4 shadow-sm;
+    }
+
+    .stat-label {
+        @apply text-sm text-wd-muted;
+    }
+
+    .stat-value {
+        @apply mt-1 text-xl font-semibold text-wd-ink;
+    }
+
+    .table-wrap {
+        @apply -mx-1 overflow-x-auto sm:mx-0;
+    }
+
+    .table {
+        @apply w-full min-w-[32rem] border-collapse text-left text-sm;
+    }
+
+    .table th {
+        @apply border-b border-wd-border bg-wd-sidebar px-3 py-2.5 font-medium text-wd-muted;
+    }
+
+    .table td {
+        @apply border-b border-wd-border px-3 py-2.5 text-wd-ink align-top;
+    }
+
+    .table tr:last-child td {
+        @apply border-b-0;
+    }
+
+    .panel {
+        @apply rounded-lg border border-wd-border bg-wd-sidebar p-4;
+    }
+
+    .code-box {
+        @apply overflow-x-auto whitespace-pre-wrap break-all rounded-lg border border-wd-border bg-wd-sidebar p-3 font-mono text-xs text-wd-ink;
+    }
+
+    .icon-btn {
+        @apply relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-wd-border bg-wd-card text-wd-ink transition hover:bg-wd-sidebar;
+    }
+
+    .icon-btn svg {
+        @apply h-4 w-4 shrink-0;
+    }
+
+    .modal-backdrop {
+        @apply fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/40 p-4;
+    }
+
+    .modal-panel {
+        @apply my-4 w-full max-h-[90vh] space-y-4 overflow-y-auto rounded-xl border border-wd-border bg-wd-card p-5 shadow-sm sm:p-6;
+    }
+
+    .skeleton {
+        @apply animate-pulse rounded-lg bg-gradient-to-r from-wd-sidebar via-wd-card to-wd-sidebar bg-[length:200%_100%];
+    }
+}
