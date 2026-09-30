@@ -19,6 +19,8 @@ abstract final class ApiPaths {
 
   static String payment(int id) => '/payments/$id';
 
+  static String paymentRefresh(int id) => '/payments/$id/refresh';
+
   static String orderTickets(int orderId) => '/orders/$orderId/tickets';
 
   static String printPayload(String ticketCode) =>

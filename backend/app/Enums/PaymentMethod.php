@@ -41,12 +41,23 @@ enum PaymentMethod: string
     }
 
     /**
-     * Normalize legacy API value `digital` → e_wallet.
+     * Methods the assisted counter may offer. Debit and e-wallet stay in the
+     * catalog for stored rows, but Midtrans MVP only charges QRIS.
+     *
+     * @return list<self>
+     */
+    public static function assistedChoices(): array
+    {
+        return [self::Cash, self::Qris];
+    }
+
+    /**
+     * Legacy kiosk value `digital` is the QRIS instrument. It is not an e-wallet.
      */
     public static function fromClient(string $value): self
     {
         if ($value === 'digital') {
-            return self::EWallet;
+            return self::Qris;
         }
 
         return self::from($value);

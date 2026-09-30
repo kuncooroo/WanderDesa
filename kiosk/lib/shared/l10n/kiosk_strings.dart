@@ -41,8 +41,10 @@ abstract final class KioskStrings {
   static const discountLabel = 'Diskon';
   static const taxLabel = 'Pajak';
   static const serviceFeeLabel = 'Biaya layanan';
-  static const paymentTitle = 'Pembayaran digital';
+  static const paymentTitle = 'Pembayaran QRIS';
   static const paymentHint = 'Pindai QR untuk membayar. Jangan tutup layar.';
+  static const paymentExpired = 'QR kedaluwarsa. Buat pesanan baru.';
+  static const newOrder = 'Buat pesanan baru';
   static const processingTitle = 'Menunggu pembayaran…';
   static const processingHint = 'Jangan tutup layar';
   static const checkStatus = 'Cek status';

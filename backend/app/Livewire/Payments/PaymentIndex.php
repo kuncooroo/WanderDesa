@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Payments;
 
+use App\Actions\Payments\RefreshProviderPaymentStatus;
 use App\Actions\Payments\RefundPayment;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
@@ -11,6 +12,7 @@ use App\Enums\TicketStatus;
 use App\Exceptions\DomainException;
 use App\Models\Destination;
 use App\Models\Payment;
+use App\Models\PaymentWebhookEvent;
 use App\Models\User;
 use App\Support\Authorization\Authorizer;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -148,6 +150,24 @@ class PaymentIndex extends Component
         $this->resetPage();
     }
 
+    public function refreshProvider(int $id, RefreshProviderPaymentStatus $refresh): void
+    {
+        $payment = Payment::query()->findOrFail($id);
+        $this->authorize('view', $payment);
+
+        try {
+            $payment = $refresh->handle($payment);
+        } catch (DomainException $e) {
+            $this->errorMessage = $e->getMessage();
+
+            return;
+        }
+
+        $this->selectedId = $payment->id;
+        $this->errorMessage = '';
+        $this->flashMessage = 'Status dicek ke provider: '.$payment->status->value.'.';
+    }
+
     public function render()
     {
         $query = Payment::query()
@@ -193,7 +213,7 @@ class PaymentIndex extends Component
 
         if ($this->selectedId !== null) {
             $selected = Payment::query()
-                ->with(['order.destination', 'collectedBy', 'device', 'tickets'])
+                ->with(['order.destination', 'collectedBy', 'device', 'tickets', 'webhookEvents'])
                 ->find($this->selectedId);
 
             if ($selected !== null) {
@@ -209,6 +229,22 @@ class PaymentIndex extends Component
             'methods' => PaymentMethod::cases(),
             'canRefund' => Authorizer::check($this->staff(), PermissionName::PaymentsRefund),
             'canRefundSelected' => $canRefundSelected,
+            'stuckPayments' => Payment::query()
+                ->with('order')
+                ->where('status', PaymentStatus::Processing)
+                ->whereIn('method', [
+                    PaymentMethod::Qris,
+                    PaymentMethod::Debit,
+                    PaymentMethod::EWallet,
+                ])
+                ->where('created_at', '<=', now()->subMinutes(3))
+                ->orderBy('created_at')
+                ->limit(20)
+                ->get(),
+            'webhookEvents' => PaymentWebhookEvent::query()
+                ->latest('id')
+                ->limit(15)
+                ->get(),
         ]);
     }
 

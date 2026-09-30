@@ -86,6 +86,43 @@ final class CashierShiftLedger
         });
     }
 
+    /**
+     * Link an assisted QRIS sale to the open shift. It is not drawer cash.
+     */
+    public function attachQrisSale(User $actor, Payment $payment): void
+    {
+        if ($payment->method !== PaymentMethod::Qris) {
+            return;
+        }
+
+        if ($payment->cashier_shift_id !== null) {
+            return;
+        }
+
+        DB::transaction(function () use ($actor, $payment): void {
+            $shift = CashierShift::query()
+                ->where('user_id', $actor->id)
+                ->where('status', CashierShiftStatus::Open)
+                ->lockForUpdate()
+                ->first();
+
+            if ($shift === null) {
+                return;
+            }
+
+            /** @var Payment $locked */
+            $locked = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->cashier_shift_id !== null) {
+                return;
+            }
+
+            $locked->forceFill([
+                'cashier_shift_id' => $shift->id,
+            ])->save();
+        });
+    }
+
     public function attachCashRefund(User $actor, Payment $payment, int $refundAmount): void
     {
         if (! $payment->isCash()) {
@@ -138,7 +175,7 @@ final class CashierShiftLedger
     /**
      * Recalculate drawer totals from linked payments (authoritative on close).
      *
-     * @return array{total_cash_sales: int, total_cash_refund: int, expected_cash: int}
+     * @return array{total_cash_sales: int, total_cash_refund: int, expected_cash: int, total_qris_sales: int}
      */
     public function recalculate(CashierShift $shift): array
     {
@@ -157,12 +194,19 @@ final class CashierShiftLedger
             ->where('status', PaymentStatus::Refunded->value)
             ->sum('amount');
 
+        $qris = (int) Payment::query()
+            ->where('cashier_shift_id', $shift->id)
+            ->where('method', PaymentMethod::Qris)
+            ->where('status', PaymentStatus::Paid->value)
+            ->sum('amount');
+
         $expected = (int) $shift->initial_cash + $sales - $refunds;
 
         return [
             'total_cash_sales' => $sales,
             'total_cash_refund' => $refunds,
             'expected_cash' => $expected,
+            'total_qris_sales' => $qris,
         ];
     }
 }

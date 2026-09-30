@@ -66,9 +66,13 @@ class TicketSelectScreen extends StatelessWidget {
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final type = ticketTypes[index];
-                      return Material(
-                        color: KioskTokens.surfaceRaised,
-                        borderRadius: BorderRadius.circular(KioskTokens.radius),
+                      return DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: KioskTokens.surface,
+                          border: Border.all(color: KioskTokens.border),
+                          borderRadius:
+                              BorderRadius.circular(KioskTokens.radius),
+                        ),
                         child: Padding(
                           padding: const EdgeInsets.all(16),
                           child: Row(

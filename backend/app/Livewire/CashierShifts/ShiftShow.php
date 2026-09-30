@@ -2,6 +2,8 @@
 
 namespace App\Livewire\CashierShifts;
 
+use App\Enums\PaymentMethod;
+use App\Enums\PaymentStatus;
 use App\Models\CashierShift;
 use App\Services\CashierShifts\CashierShiftLedger;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -31,10 +33,23 @@ class ShiftShow extends Component
                 'total_cash_sales' => (int) $this->shift->total_cash_sales,
                 'total_cash_refund' => (int) $this->shift->total_cash_refund,
                 'expected_cash' => (int) $this->shift->expected_cash,
+                'total_qris_sales' => (int) $this->shift->cashSales()
+                    ->where('method', PaymentMethod::Qris)
+                    ->where('status', PaymentStatus::Paid)
+                    ->sum('amount'),
             ];
 
         $sales = $this->shift->cashSales()
             ->with('order')
+            ->where('method', PaymentMethod::Cash)
+            ->orderByDesc('paid_at')
+            ->limit(50)
+            ->get();
+
+        $qrisSales = $this->shift->cashSales()
+            ->with('order')
+            ->where('method', PaymentMethod::Qris)
+            ->where('status', PaymentStatus::Paid)
             ->orderByDesc('paid_at')
             ->limit(50)
             ->get();
@@ -48,6 +63,7 @@ class ShiftShow extends Component
         return view('livewire.cashier-shifts.shift-show', [
             'totals' => $totals,
             'sales' => $sales,
+            'qrisSales' => $qrisSales,
             'refunds' => $refunds,
         ]);
     }

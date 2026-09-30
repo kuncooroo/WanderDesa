@@ -140,7 +140,7 @@ class KioskEndpoints implements KioskDeviceApi, KioskCommerceApi {
     final data = await _api.post(
       ApiPaths.orderPayments(orderId),
       idempotencyKey: idempotencyKey,
-      body: const {'method': 'digital'},
+      body: const {'method': 'qris'},
     );
     return PaymentInitiationDto.fromJson(data);
   }
@@ -149,6 +149,12 @@ class KioskEndpoints implements KioskDeviceApi, KioskCommerceApi {
   Future<PaymentDto> getPayment(int paymentId) async {
     final data = await _api.get(ApiPaths.payment(paymentId));
     return PaymentDto.fromJson(data);
+  }
+
+  @override
+  Future<PaymentInitiationDto> refreshPayment(int paymentId) async {
+    final data = await _api.post(ApiPaths.paymentRefresh(paymentId));
+    return PaymentInitiationDto.fromJson(data);
   }
 
   @override

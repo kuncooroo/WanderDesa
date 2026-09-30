@@ -70,11 +70,13 @@ class _ActivationScreenState extends State<ActivationScreen> {
                     const Text(
                       KioskStrings.activationTitle,
                       style: KioskTokens.headline,
+                      textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 12),
                     const Text(
                       KioskStrings.activationBody,
                       style: KioskTokens.bodyMuted,
+                      textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 28),
                     TextFormField(

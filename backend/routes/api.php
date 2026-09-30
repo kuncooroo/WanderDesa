@@ -56,6 +56,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/orders/{order}', [OrderController::class, 'show']);
             Route::get('/orders/{order}/tickets', [TicketController::class, 'indexForOrder']);
             Route::get('/payments/{payment}', [PaymentController::class, 'show']);
+            Route::post('/payments/{payment}/refresh', [PaymentController::class, 'refresh']);
             Route::get('/tickets/{ticket_code}', [TicketController::class, 'show']);
             Route::get('/tickets/{ticket_code}/print-payload', [TicketController::class, 'printPayload']);
 

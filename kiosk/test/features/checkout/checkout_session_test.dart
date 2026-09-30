@@ -190,6 +190,12 @@ class _FakeCommerce implements KioskCommerceApi {
   }
 
   @override
+  Future<PaymentInitiationDto> refreshPayment(int paymentId) async {
+    final latest = await getPayment(paymentId);
+    return PaymentInitiationDto(payment: latest);
+  }
+
+  @override
   Future<List<TicketDto>> orderTickets(int orderId) async {
     return const [
       TicketDto(

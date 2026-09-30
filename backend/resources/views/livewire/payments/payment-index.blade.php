@@ -4,6 +4,70 @@
         <p class="page-desc">Daftar pembayaran dan refund. Status PAID hanya dari server — tidak ada ubah status manual.</p>
     </div>
 
+    @if ($stuckPayments->isNotEmpty())
+        <div class="card space-y-3">
+            <h2 class="text-sm font-semibold">Pembayaran processing lebih dari 3 menit</h2>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Nomor</th>
+                            <th>Metode</th>
+                            <th>Nominal</th>
+                            <th>Dibuat</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($stuckPayments as $stuck)
+                            <tr wire:key="stuck-{{ $stuck->id }}">
+                                <td><code class="text-xs">{{ $stuck->payment_number }}</code></td>
+                                <td>{{ $stuck->method->value }}</td>
+                                <td>Rp {{ number_format((int) $stuck->amount, 0, ',', '.') }}</td>
+                                <td>{{ $stuck->created_at?->timezone(config('app.timezone')) }}</td>
+                                <td>
+                                    <button type="button" class="btn btn-secondary" wire:click="refreshProvider({{ $stuck->id }})" wire:loading.attr="disabled">
+                                        Cek ke Midtrans
+                                    </button>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
+
+    <div class="card space-y-3">
+        <h2 class="text-sm font-semibold">Notifikasi pembayaran terbaru</h2>
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Waktu</th>
+                        <th>Provider</th>
+                        <th>Status</th>
+                        <th>Payment id</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($webhookEvents as $event)
+                        <tr wire:key="wh-{{ $event->id }}">
+                            <td>{{ $event->created_at?->timezone(config('app.timezone')) }}</td>
+                            <td>{{ $event->provider }}</td>
+                            <td>{{ $event->process_status->label() }}</td>
+                            <td>{{ $event->payment_id ?: '—' }}</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="text-wd-muted">Belum ada notifikasi Midtrans. URL webhook atau queue:work mungkin belum jalan.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     @if ($errorMessage !== '')
         <div class="alert alert-error" role="alert">{{ $errorMessage }}</div>
     @endif
@@ -170,6 +234,32 @@
                 @if ($refundReasonMeta)
                     <p><span class="text-wd-muted">Alasan refund:</span> {{ $refundReasonMeta }}</p>
                 @endif
+            </div>
+
+            <div>
+                <h3 class="mb-2 text-sm font-semibold">Notifikasi untuk pembayaran ini</h3>
+                <div class="table-wrap">
+                    <table class="table min-w-0">
+                        <thead>
+                            <tr>
+                                <th>Waktu</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($selected->webhookEvents as $event)
+                                <tr wire:key="sel-wh-{{ $event->id }}">
+                                    <td>{{ $event->created_at?->timezone(config('app.timezone')) }}</td>
+                                    <td>{{ $event->process_status->label() }}</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="2" class="text-wd-muted">Belum ada notifikasi Midtrans untuk pembayaran ini.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div>

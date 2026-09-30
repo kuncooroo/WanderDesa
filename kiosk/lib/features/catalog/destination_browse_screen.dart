@@ -47,9 +47,21 @@ class DestinationBrowseScreen extends StatelessWidget {
                     childAspectRatio: 2.4,
                     children: [
                       for (final destination in destinations)
-                        FilledButton(
+                        OutlinedButton(
                           onPressed: () => onSelect(destination),
-                          child: Text(destination.name),
+                          style: OutlinedButton.styleFrom(
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 20,
+                            ),
+                            minimumSize: const Size(88, 88),
+                          ),
+                          child: Text(
+                            destination.name,
+                            textAlign: TextAlign.center,
+                            style: KioskTokens.title,
+                          ),
                         ),
                     ],
                   ),

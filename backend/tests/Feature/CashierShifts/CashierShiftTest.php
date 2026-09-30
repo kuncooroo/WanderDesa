@@ -145,4 +145,38 @@ class CashierShiftTest extends TestCase
             ->set('actualCash', '90000')
             ->assertSee('Selisih Rp -10.000');
     }
+
+    public function test_qris_sale_is_on_the_shift_but_not_in_expected_cash(): void
+    {
+        $officer = $this->userWithRole(RoleName::TicketOfficer);
+        $shift = $this->openCashierShiftFor($officer, 100_000);
+        ['destination' => $destination, 'adult' => $adult] = $this->sellableCatalog();
+        $token = $officer->createToken('phpunit')->plainTextToken;
+        $order = $this->createPendingOrder($token, $destination, $adult, 'shift-qris');
+
+        $this->withIdempotency($token, 'shift-qris-pay')
+            ->postJson('/api/v1/orders/'.$order['id'].'/payments', [
+                'method' => PaymentMethod::Qris->value,
+            ])
+            ->assertCreated();
+
+        $payment = Payment::query()->where('order_id', $order['id'])->firstOrFail();
+        $this->assertSame(PaymentMethod::Qris, $payment->method);
+        $this->assertSame($shift->id, (int) $payment->cashier_shift_id);
+
+        $shift->refresh();
+        $this->assertSame(100_000, (int) $shift->expected_cash);
+        $this->assertSame(0, (int) $shift->total_cash_sales);
+
+        $payment->forceFill([
+            'status' => PaymentStatus::Paid,
+            'paid_at' => now(),
+        ])->save();
+
+        Livewire::actingAs($officer)
+            ->test(ShiftIndex::class)
+            ->call('openCloseModal', $shift->id)
+            ->assertSet('closePreview.expected_cash', 100_000)
+            ->assertSet('closePreview.total_qris_sales', (int) $payment->amount);
+    }
 }

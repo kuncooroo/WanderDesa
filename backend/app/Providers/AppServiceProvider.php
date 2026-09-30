@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Integrations\Gate\GateController;
 use App\Integrations\Gate\NullGateController;
+use App\Integrations\Payments\MidtransPaymentGateway;
 use App\Integrations\Payments\NullPaymentGateway;
 use App\Integrations\Payments\PaymentGateway;
 use App\Integrations\Payments\SandboxPaymentGateway;
@@ -31,6 +32,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(PaymentGateway::class, function (): PaymentGateway {
             return match (config('payments.gateway')) {
                 'null' => new NullPaymentGateway,
+                'midtrans' => new MidtransPaymentGateway,
                 default => new SandboxPaymentGateway,
             };
         });

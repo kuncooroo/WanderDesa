@@ -153,6 +153,7 @@ class ShiftIndex extends Component
             'total_cash_sales' => $totals['total_cash_sales'],
             'total_cash_refund' => $totals['total_cash_refund'],
             'expected_cash' => $totals['expected_cash'],
+            'total_qris_sales' => $totals['total_qris_sales'],
         ];
         $this->errorMessage = '';
         $this->resetValidation();

@@ -78,7 +78,7 @@ Response meta: `meta.current_page`, `meta.per_page`, `meta.total`, `meta.last_pa
 - `destination_id` / `ticket_type_id`
 - `quantity`
 - `visit_date` (if required by ticket type)
-- `payment.method` (`cash` \| `qris` \| `debit` \| `e_wallet`) where permitted; legacy `digital` accepted as alias of `e_wallet`
+- `payment.method` (`cash` \| `qris` \| `debit` \| `e_wallet`) where permitted; legacy `digital` accepted as alias of `qris` (the live provider instrument). Debit and e-wallet remain stored values, but the Midtrans adapter charges QRIS only and rejects `debit` / `e_wallet`.
 - notes / idempotency key / device health fields
 
 ---
@@ -456,7 +456,7 @@ If alias exists:
 | **Authentication** | Bearer device/user |
 | **Authorization** | device `payments.initiate` or `payments.create` |
 | **Headers** | **`Idempotency-Key` required** |
-| **Request** | `{ "method":"cash"|"qris"|"debit"|"e_wallet" }` (`digital` accepted as alias of `e_wallet`) |
+| **Request** | `{ "method":"cash"|"qris"|"debit"|"e_wallet" }` (`digital` accepted as alias of `qris`) |
 | **Validation** | order `pending_payment`; method allowed for principal (`cash` staff only); **reject client `amount`** |
 | **Server sets** | `amount = order.grand_total`, status `pending`→`processing`, provider session if provider-backed (`qris`/`debit`/`e_wallet`) |
 | **Response** | `{ payment, next_action?: { type:"display_qr", qr_content, expires_at } }` |
@@ -477,6 +477,18 @@ If alias exists:
 | **Response** | payment status + order status + tickets_issued boolean |
 | **Status Codes** | 200, 401, 403, 404 |
 | **Audit** | No |
+
+### 14.2a Refresh payment status from the provider
+
+| Field | Value |
+|---|---|
+| **Method / Path** | `POST /api/v1/payments/{id}/refresh` |
+| **Authentication** | Bearer device/user |
+| **Authorization** | same as get payment |
+| **Behavior** | Queries the configured provider (Midtrans status). Pending or unreachable leaves the local status unchanged. Paid, failed, and expired are applied by the server. |
+| **Response** | `{ payment, next_action }` |
+| **Status Codes** | 200, 401, 403, 404 |
+| **Audit** | provider apply path only when status changes |
 
 ### 14.3 Confirm cash payment (staff)
 
@@ -750,6 +762,7 @@ See §6.
 | POST | `/orders/{id}/cancel` | User/Device |
 | POST | `/orders/{id}/payments` | User/Device |
 | GET | `/payments/{id}` | User/Device |
+| POST | `/payments/{id}/refresh` | User/Device |
 | POST | `/payments/{id}/confirm-cash` | User |
 | POST | `/payments/{id}/refund` | User |
 | POST | `/webhooks/payments/{provider}` | Provider sig |
@@ -811,7 +824,7 @@ See §6.
   "id": 10,
   "payment_number": "PAY-...",
   "status": "processing",
-  "method": "digital",
+  "method": "qris",
   "amount": 100000,
   "currency": "IDR",
   "paid_at": null

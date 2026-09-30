@@ -5,6 +5,7 @@ namespace App\Livewire\AssistedSale;
 use App\Actions\Orders\CreateOrder;
 use App\Actions\Payments\ConfirmCashPayment;
 use App\Actions\Payments\InitiatePayment;
+use App\Actions\Payments\RefreshProviderPaymentStatus;
 use App\Actions\Pricing\QuoteOrderAction;
 use App\Actions\Tickets\RecordTicketPrintAttempt;
 use App\Enums\Channel;
@@ -246,22 +247,39 @@ class SaleWizard extends Component
         }
     }
 
-    public function refreshPaymentStatus(): void
+    public function refreshPaymentStatus(RefreshProviderPaymentStatus $refresh): void
     {
         if ($this->paymentId === null) {
             return;
         }
 
-        $payment = Payment::query()->with('tickets')->find($this->paymentId);
+        $payment = Payment::query()->find($this->paymentId);
         if ($payment === null) {
+            return;
+        }
+
+        $this->authorize('view', $payment);
+
+        try {
+            $payment = $refresh->handle($payment);
+        } catch (DomainException $e) {
+            $this->errorMessage = $e->getMessage();
+
             return;
         }
 
         $this->paymentStatus = $payment->status->value;
         $this->nextAction = $payment->nextAction();
+        $this->errorMessage = '';
 
         if ($payment->status === PaymentStatus::Paid) {
             $this->finishPaid($payment);
+
+            return;
+        }
+
+        if (in_array($payment->status, [PaymentStatus::Failed, PaymentStatus::Expired, PaymentStatus::Cancelled], true)) {
+            $this->errorMessage = 'Pembayaran tidak berhasil atau QR sudah kedaluwarsa. Buat pesanan baru.';
         }
     }
 
@@ -410,7 +428,7 @@ class SaleWizard extends Component
             'destinations' => $destinations,
             'ticketTypes' => $ticketTypes,
             'channelAssisted' => Channel::Assisted->value,
-            'paymentMethods' => PaymentMethod::cases(),
+            'paymentMethods' => PaymentMethod::assistedChoices(),
         ]);
     }
 

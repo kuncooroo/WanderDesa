@@ -135,10 +135,10 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
                     session.order?.grandTotal ??
                     0,
                 nextAction: session.nextAction,
-                onCheckStatus: session.pollOnce,
+                onCheckStatus: session.refreshFromProvider,
                 onCancel: session.cancelToIdle,
               )
-            : PaymentProcessingScreen(onCheckStatus: session.pollOnce),
+            : PaymentProcessingScreen(onCheckStatus: session.refreshFromProvider),
       CheckoutPhase.success => PaymentSuccessScreen(
         orderNumber: session.order?.orderNumber ?? '',
         ticketCount: session.tickets.length,

@@ -136,15 +136,28 @@
                         Buka konfirmasi tunai
                     </button>
                 @else
-                    <p class="text-sm text-wd-muted">Menunggu konfirmasi provider. Status final dari server.</p>
-                    @if (! empty($nextAction['qr_content']))
-                        <div class="panel">
-                            <div class="text-xs text-wd-muted">QR / instruksi provider</div>
-                            <pre class="code-box mt-2">{{ $nextAction['qr_content'] }}</pre>
+                    <p class="text-sm text-wd-muted">Menunggu konfirmasi Midtrans. Status lunas hanya setelah server menerima notifikasi atau hasil cek status.</p>
+                    @php
+                        $qr = is_array($nextAction) ? ($nextAction['qr_content'] ?? null) : null;
+                        $qrExpires = is_array($nextAction) ? ($nextAction['expires_at'] ?? null) : null;
+                    @endphp
+                    @if (is_string($qr) && $qr !== '')
+                        <div class="panel space-y-3">
+                            <div class="text-sm font-medium">Pindai QRIS</div>
+                            <div
+                                class="inline-block rounded-lg border border-wd-border bg-white p-3"
+                                data-qr="{{ $qr }}"
+                            ></div>
+                            @if (is_string($qrExpires) && $qrExpires !== '')
+                                <p
+                                    class="text-sm text-wd-muted"
+                                    data-qr-expires="{{ $qrExpires }}"
+                                >Sisa waktu QR dihitung di layar.</p>
+                            @endif
                         </div>
                     @endif
-                    <button type="button" class="btn btn-primary" wire:click="refreshPaymentStatus">
-                        Periksa status pembayaran
+                    <button type="button" class="btn btn-primary" wire:click="refreshPaymentStatus" wire:loading.attr="disabled">
+                        Periksa status ke Midtrans
                     </button>
                 @endif
             </div>

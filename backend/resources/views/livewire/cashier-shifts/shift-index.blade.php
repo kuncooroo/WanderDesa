@@ -43,6 +43,7 @@
             <strong>Rp {{ number_format((int) $activeShift->initial_cash, 0, ',', '.') }}</strong>
             · kas seharusnya
             <strong>Rp {{ number_format((int) $activeShift->expected_cash, 0, ',', '.') }}</strong>
+            · QRIS tidak masuk kas laci; lihat di detail shift.
             <div class="mt-2 flex flex-wrap gap-2">
                 <button type="button" class="btn btn-sm btn-primary" wire:click="openCloseModal({{ $activeShift->id }})">
                     Tutup shift
@@ -213,6 +214,10 @@
                     <div>
                         <dt class="text-wd-muted">Total refund tunai</dt>
                         <dd class="font-medium tabular-nums">Rp {{ number_format((int) $closePreview['total_cash_refund'], 0, ',', '.') }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-wd-muted">QRIS (bukan kas laci)</dt>
+                        <dd class="font-medium tabular-nums">Rp {{ number_format((int) ($closePreview['total_qris_sales'] ?? 0), 0, ',', '.') }}</dd>
                     </div>
                     <div>
                         <dt class="text-wd-muted">Kas seharusnya</dt>

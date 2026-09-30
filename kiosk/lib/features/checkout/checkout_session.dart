@@ -238,6 +238,31 @@ class CheckoutSession extends ChangeNotifier {
     }
   }
 
+  Future<void> refreshFromProvider() async {
+    final paymentId = payment?.id;
+    if (paymentId == null || busy) {
+      return;
+    }
+    busy = true;
+    notifyListeners();
+    try {
+      final latest = await _commerce.refreshPayment(paymentId);
+      payment = latest.payment;
+      nextAction = latest.nextAction ?? nextAction;
+      await _applyPayment(latest.payment);
+    } on ApiException catch (error) {
+      busy = false;
+      if (error.isNetwork) {
+        phase = CheckoutPhase.unknownStatus;
+        errorMessage = KioskErrorCopy.unknownPayment;
+      } else {
+        phase = CheckoutPhase.failure;
+        errorMessage = ErrorMapper.toUserMessage(error);
+      }
+      notifyListeners();
+    }
+  }
+
   Future<void> pollOnce() async {
     final paymentId = payment?.id;
     if (paymentId == null) {

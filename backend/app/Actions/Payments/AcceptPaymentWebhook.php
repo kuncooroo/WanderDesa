@@ -24,8 +24,9 @@ final class AcceptPaymentWebhook
     public function handle(string $provider, Request $request): PaymentWebhookEvent
     {
         $provider = strtolower($provider);
+        $configured = strtolower((string) config('payments.gateway'));
 
-        if ($provider !== 'sandbox' || ! $this->gateway instanceof VerifiesPaymentWebhooks) {
+        if ($provider !== $configured || ! $this->gateway instanceof VerifiesPaymentWebhooks) {
             throw new DomainException(
                 'resource.not_found',
                 'Unknown payment provider.',
@@ -39,6 +40,8 @@ final class AcceptPaymentWebhook
         try {
             $this->gateway->verifyWebhookSignature($rawBody, $signatureHeader);
         } catch (AuthException $e) {
+            $this->recordRejected($provider, $rawBody);
+
             Log::warning('payment.webhook.signature_invalid', [
                 'provider' => $provider,
                 'ip' => $request->ip(),
@@ -157,5 +160,22 @@ final class AcceptPaymentWebhook
         $sqlState = $e->errorInfo[0] ?? $e->getCode();
 
         return $sqlState === '23000' || str_contains(strtolower($e->getMessage()), 'unique');
+    }
+
+    private function recordRejected(string $provider, string $rawBody): void
+    {
+        $hash = hash('sha256', $rawBody === '' ? 'empty' : $rawBody);
+
+        try {
+            PaymentWebhookEvent::query()->create([
+                'provider' => $provider,
+                'event_id' => 'rejected:'.substr($hash, 0, 40),
+                'payload_hash' => $hash,
+                'process_status' => WebhookProcessStatus::Rejected,
+                'processed_at' => now(),
+            ]);
+        } catch (UniqueConstraintViolationException|QueryException) {
+            // Same rejected body already stored.
+        }
     }
 }

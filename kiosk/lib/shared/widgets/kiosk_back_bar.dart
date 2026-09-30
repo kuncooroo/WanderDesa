@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../l10n/kiosk_strings.dart';
 import '../theme/kiosk_theme.dart';
 
 class KioskBackBar extends StatelessWidget {
@@ -18,13 +17,26 @@ class KioskBackBar extends StatelessWidget {
     return Row(
       children: [
         if (onBack != null)
-          OutlinedButton(
+          IconButton(
             onPressed: onBack,
-            child: const Text(KioskStrings.backCta),
+            tooltip: 'Kembali',
+            style: IconButton.styleFrom(
+              foregroundColor: KioskTokens.ink,
+              minimumSize: const Size(48, 48),
+            ),
+            icon: const Text(
+              '<',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w400,
+                height: 1,
+                color: KioskTokens.ink,
+              ),
+            ),
           )
         else
-          const SizedBox(width: 120),
-        const SizedBox(width: 16),
+          const SizedBox(width: 48),
+        const SizedBox(width: 8),
         Expanded(
           child: Text(title, style: KioskTokens.title),
         ),

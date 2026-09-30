@@ -38,9 +38,27 @@ class QrDisplayScreen extends StatelessWidget {
                     return Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        ColoredBox(
-                          color: Colors.white,
-                          child: QrImageView(data: payload, size: 280),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: KioskTokens.surface,
+                            border: Border.all(color: KioskTokens.border),
+                            borderRadius:
+                                BorderRadius.circular(KioskTokens.radius),
+                          ),
+                          child: QrImageView(
+                            data: payload,
+                            size: 280,
+                            backgroundColor: KioskTokens.surface,
+                            eyeStyle: const QrEyeStyle(
+                              eyeShape: QrEyeShape.square,
+                              color: KioskTokens.ink,
+                            ),
+                            dataModuleStyle: const QrDataModuleStyle(
+                              dataModuleShape: QrDataModuleShape.square,
+                              color: KioskTokens.ink,
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Text(ticket.ticketCode, style: KioskTokens.title),

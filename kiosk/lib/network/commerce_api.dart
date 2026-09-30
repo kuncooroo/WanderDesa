@@ -33,6 +33,8 @@ abstract class KioskCommerceApi {
 
   Future<PaymentDto> getPayment(int paymentId);
 
+  Future<PaymentInitiationDto> refreshPayment(int paymentId);
+
   Future<List<TicketDto>> orderTickets(int orderId);
 
   Future<PrintPayloadDto> printPayload(String ticketCode);

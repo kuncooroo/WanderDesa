@@ -28,6 +28,10 @@
             <div class="text-xs text-wd-muted">Kas seharusnya</div>
             <div class="mt-1 text-lg font-semibold tabular-nums text-wd-accent">Rp {{ number_format((int) $totals['expected_cash'], 0, ',', '.') }}</div>
         </div>
+        <div class="panel">
+            <div class="text-xs text-wd-muted">QRIS (bukan kas laci)</div>
+            <div class="mt-1 text-lg font-semibold tabular-nums">Rp {{ number_format((int) ($totals['total_qris_sales'] ?? 0), 0, ',', '.') }}</div>
+        </div>
     </div>
 
     @if ($shift->isClosed())
@@ -83,6 +87,36 @@
                     @empty
                         <tr>
                             <td colspan="4" class="py-6 text-center text-wd-muted">Belum ada penjualan tunai.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card space-y-3">
+        <h2 class="text-base font-semibold">Penjualan QRIS terhubung</h2>
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Pembayaran</th>
+                        <th>Pesanan</th>
+                        <th>Nominal</th>
+                        <th>Dibayar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($qrisSales as $payment)
+                        <tr wire:key="qris-{{ $payment->id }}">
+                            <td><code class="text-xs">{{ $payment->payment_number }}</code></td>
+                            <td><code class="text-xs">{{ $payment->order?->order_number ?? '—' }}</code></td>
+                            <td class="tabular-nums">Rp {{ number_format((int) $payment->amount, 0, ',', '.') }}</td>
+                            <td class="text-wd-muted">{{ $payment->paid_at?->timezone(config('app.timezone')) ?? '—' }}</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="py-6 text-center text-wd-muted">Belum ada penjualan QRIS.</td>
                         </tr>
                     @endforelse
                 </tbody>

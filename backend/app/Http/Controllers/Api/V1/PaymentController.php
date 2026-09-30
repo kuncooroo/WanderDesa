@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Payments\ConfirmCashPayment;
 use App\Actions\Payments\InitiatePayment;
+use App\Actions\Payments\RefreshProviderPaymentStatus;
 use App\Exceptions\DomainException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Payments\ConfirmCashPaymentRequest;
@@ -68,6 +69,21 @@ class PaymentController extends Controller
         return ApiResponse::success(
             (new PaymentResource($payment))->resolve($request),
         );
+    }
+
+    public function refresh(
+        Request $request,
+        Payment $payment,
+        RefreshProviderPaymentStatus $refresh,
+    ): JsonResponse {
+        $this->authorizeView($request, $payment);
+
+        $payment = $refresh->handle($payment);
+
+        return ApiResponse::success([
+            'payment' => (new PaymentResource($payment))->resolve($request),
+            'next_action' => $payment->nextAction(),
+        ]);
     }
 
     public function confirmCash(

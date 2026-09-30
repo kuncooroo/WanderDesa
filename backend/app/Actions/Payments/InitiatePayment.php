@@ -13,6 +13,7 @@ use App\Models\Device;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\User;
+use App\Services\CashierShifts\CashierShiftLedger;
 use App\Services\Payments\PaymentStateService;
 use App\Support\AuditWriter;
 use App\Support\Authorization\Authorizer;
@@ -35,6 +36,7 @@ final class InitiatePayment
         private readonly PaymentStateService $states,
         private readonly PaymentGateway $gateway,
         private readonly AuditWriter $audit,
+        private readonly CashierShiftLedger $shifts,
     ) {}
 
     /**
@@ -48,6 +50,14 @@ final class InitiatePayment
         ?Request $request = null,
     ): array {
         $this->authorizeInitiate($principal, $method);
+
+        if (config('payments.gateway') === 'midtrans'
+            && in_array($method, [PaymentMethod::Debit, PaymentMethod::EWallet], true)) {
+            throw new DomainException(
+                'payment.method_unavailable',
+                'Metode ini belum tersedia. Gunakan QRIS.',
+            );
+        }
 
         $canonical = [
             'order_id' => (int) $order->id,
@@ -190,6 +200,10 @@ final class InitiatePayment
         }
 
         $payment->load(['order', 'tickets']);
+
+        if ($payment->status !== PaymentStatus::Failed && $principal instanceof User && $method === PaymentMethod::Qris) {
+            $this->shifts->attachQrisSale($principal, $payment);
+        }
 
         if ($payment->status !== PaymentStatus::Failed) {
             $this->audit->writeCritical(
