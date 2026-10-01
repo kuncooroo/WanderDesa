@@ -304,7 +304,9 @@ class CheckoutSession extends ChangeNotifier {
 
   Future<void> changeTickets() async {
     _stopPoll();
-    await _cancelUnpaidQuietly();
+    if (await _cancelUnpaidOrResumePaid()) {
+      return;
+    }
     await _recovery.clear();
     order = null;
     payment = null;
@@ -319,7 +321,9 @@ class CheckoutSession extends ChangeNotifier {
 
   Future<void> cancelToIdle() async {
     _stopPoll();
-    await _cancelUnpaidQuietly();
+    if (await _cancelUnpaidOrResumePaid()) {
+      return;
+    }
     await _recovery.clear();
     onFinished?.call();
   }
@@ -574,15 +578,31 @@ class CheckoutSession extends ChangeNotifier {
     await _recovery.write(snapshot);
   }
 
-  Future<void> _cancelUnpaidQuietly() async {
+  /// True when the provider already settled, so the paid flow is showing instead of idle.
+  Future<bool> _cancelUnpaidOrResumePaid() async {
     final current = order;
     if (current == null || !current.isPendingPayment) {
-      return;
+      return false;
     }
     try {
       await _commerce.cancelOrder(current.id, reason: 'kiosk_session_end');
+      return false;
     } on ApiException {
-      // Idle path must not invent success; ignore cancel transport errors.
+      final paymentId = payment?.id;
+      if (paymentId == null) {
+        return false;
+      }
+      try {
+        final latest = await _commerce.getPayment(paymentId);
+        payment = latest;
+        if (latest.isPaid || latest.isSuccess) {
+          await _applyPayment(latest);
+          return true;
+        }
+      } on ApiException {
+        // Cancel failed and status is still unknown; caller ends the session.
+      }
+      return false;
     }
   }
 

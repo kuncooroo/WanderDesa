@@ -2,10 +2,15 @@
 
 namespace App\Actions\Orders;
 
+use App\Actions\Payments\MarkPaymentPaid;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\PermissionName;
 use App\Exceptions\DomainException;
+use App\Integrations\Payments\CancelsRemotePayments;
+use App\Integrations\Payments\PaymentGateway;
+use App\Integrations\Payments\PaymentGatewayException;
+use App\Integrations\Payments\RemotePaymentStatus;
 use App\Models\Device;
 use App\Models\Order;
 use App\Models\Payment;
@@ -20,6 +25,8 @@ final class CancelOrder
 {
     public function __construct(
         private readonly AuditWriter $audit,
+        private readonly PaymentGateway $gateway,
+        private readonly MarkPaymentPaid $markPaid,
     ) {}
 
     public function handle(
@@ -29,6 +36,7 @@ final class CancelOrder
         ?Request $request = null,
     ): Order {
         $this->authorizeCancel($principal, $order);
+        $this->releaseOpenProviderCharges($order);
 
         return DB::transaction(function () use ($principal, $order, $reason, $request): Order {
             /** @var Order $locked */
@@ -123,6 +131,51 @@ final class CancelOrder
 
             return $locked;
         });
+    }
+
+    /**
+     * A local cancel must not leave a payable Midtrans QR open. If the provider
+     * has already settled, record PAID and refuse the cancel instead of dropping the money.
+     */
+    private function releaseOpenProviderCharges(Order $order): void
+    {
+        if (! $this->gateway instanceof CancelsRemotePayments) {
+            return;
+        }
+
+        $configured = strtolower((string) config('payments.gateway'));
+
+        foreach ($order->payments()->get() as $payment) {
+            if (! $payment->isOpen() || ! $payment->isProviderBacked()) {
+                continue;
+            }
+
+            if (strtolower((string) $payment->provider) !== $configured) {
+                continue;
+            }
+
+            try {
+                $remote = $this->gateway->cancelRemote($payment);
+            } catch (PaymentGatewayException $e) {
+                throw new DomainException(
+                    $e->failureCode,
+                    'Payment provider could not cancel the charge. Order was not cancelled.',
+                    502,
+                );
+            }
+
+            if ($remote !== RemotePaymentStatus::Paid) {
+                continue;
+            }
+
+            $this->markPaid->handle($payment, source: 'reconcile');
+
+            throw new DomainException(
+                'order.state_conflict',
+                'This order was paid by the provider and was not cancelled.',
+                409,
+            );
+        }
     }
 
     private function authorizeCancel(Device|User $principal, Order $order): void

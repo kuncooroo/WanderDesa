@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
 use JsonException;
 use Throwable;
 
-final class MidtransPaymentGateway implements PaymentGateway, QueriesRemotePaymentStatus, VerifiesPaymentWebhooks
+final class MidtransPaymentGateway implements CancelsRemotePayments, PaymentGateway, QueriesRemotePaymentStatus, VerifiesPaymentWebhooks
 {
     public function initiate(Payment $payment, Order $order): PaymentInitiation
     {
@@ -116,17 +116,28 @@ final class MidtransPaymentGateway implements PaymentGateway, QueriesRemotePayme
                     'amount' => (int) $payment->amount,
                     'reason' => 'WanderDesa refund',
                 ]);
-        } catch (ConnectionException $e) {
+        } catch (ConnectionException) {
             throw new PaymentGatewayException(
                 'Midtrans refund unreachable.',
                 'upstream.payment_provider_unavailable',
             );
         }
 
-        if ($response->failed()) {
+        /** @var array<string, mixed> $body */
+        $body = $response->json() ?? [];
+        $statusCode = (string) ($body['status_code'] ?? '');
+        $transactionStatus = strtolower((string) ($body['transaction_status'] ?? ''));
+
+        // Midtrans often returns HTTP 200 with a non-success status_code (412/414).
+        // Treating that as success voids tickets while the money stays captured.
+        if ($response->failed()
+            || $statusCode !== '200'
+            || ! in_array($transactionStatus, ['refund', 'partial_refund'], true)) {
             Log::warning('payment.midtrans.refund_failed', [
                 'payment_id' => $payment->id,
                 'status' => $response->status(),
+                'status_code' => $statusCode,
+                'transaction_status' => $transactionStatus,
             ]);
 
             throw new PaymentGatewayException(
@@ -134,6 +145,56 @@ final class MidtransPaymentGateway implements PaymentGateway, QueriesRemotePayme
                 'upstream.payment_provider_unavailable',
             );
         }
+    }
+
+    public function cancelRemote(Payment $payment): RemotePaymentStatus
+    {
+        $serverKey = $this->serverKey();
+        $orderId = rawurlencode($payment->provider_reference ?: $payment->payment_number);
+
+        try {
+            $response = $this->client($serverKey)->post('/v2/'.$orderId.'/cancel');
+        } catch (ConnectionException) {
+            throw new PaymentGatewayException(
+                'Midtrans cancel unreachable.',
+                'upstream.payment_provider_unavailable',
+            );
+        }
+
+        /** @var array<string, mixed> $body */
+        $body = $response->json() ?? [];
+        $mapped = $this->mapPayloadStatus($body);
+
+        if (in_array($mapped, [
+            RemotePaymentStatus::Paid,
+            RemotePaymentStatus::Failed,
+            RemotePaymentStatus::Expired,
+        ], true)) {
+            return $mapped;
+        }
+
+        $statusCode = (string) ($body['status_code'] ?? '');
+        if ($statusCode === '412' || $response->status() === 412) {
+            $remote = $this->fetchRemoteStatus($payment);
+            if (in_array($remote, [
+                RemotePaymentStatus::Paid,
+                RemotePaymentStatus::Failed,
+                RemotePaymentStatus::Expired,
+            ], true)) {
+                return $remote;
+            }
+        }
+
+        Log::warning('payment.midtrans.cancel_failed', [
+            'payment_id' => $payment->id,
+            'status' => $response->status(),
+            'status_code' => $statusCode,
+        ]);
+
+        throw new PaymentGatewayException(
+            'Midtrans cancel failed.',
+            'upstream.payment_provider_unavailable',
+        );
     }
 
     public function verifyWebhookSignature(string $rawBody, ?string $signatureHeader): void
@@ -196,7 +257,7 @@ final class MidtransPaymentGateway implements PaymentGateway, QueriesRemotePayme
         $transactionId = $payload['transaction_id'] ?? null;
         $orderId = $payload['order_id'] ?? null;
         $transactionStatus = strtolower((string) ($payload['transaction_status'] ?? ''));
-        $fraudStatus = strtolower((string) ($payload['fraud_status'] ?? 'accept'));
+        $fraudStatus = strtolower((string) ($payload['fraud_status'] ?? ''));
         $statusCode = (string) ($payload['status_code'] ?? '');
 
         if (! is_string($transactionId) || $transactionId === '') {
@@ -252,10 +313,8 @@ final class MidtransPaymentGateway implements PaymentGateway, QueriesRemotePayme
 
         /** @var array<string, mixed> $body */
         $body = $response->json() ?? [];
-        $transactionStatus = strtolower((string) ($body['transaction_status'] ?? ''));
-        $fraudStatus = strtolower((string) ($body['fraud_status'] ?? 'accept'));
 
-        return $this->mapTransactionStatus($transactionStatus, $fraudStatus);
+        return $this->mapPayloadStatus($body);
     }
 
     private function client(string $serverKey): PendingRequest
@@ -286,13 +345,26 @@ final class MidtransPaymentGateway implements PaymentGateway, QueriesRemotePayme
         return $key;
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function mapPayloadStatus(array $payload): RemotePaymentStatus
+    {
+        $transactionStatus = strtolower((string) ($payload['transaction_status'] ?? ''));
+        $fraudStatus = strtolower((string) ($payload['fraud_status'] ?? ''));
+
+        return $this->mapTransactionStatus($transactionStatus, $fraudStatus);
+    }
+
     private function mapTransactionStatus(string $transactionStatus, string $fraudStatus): RemotePaymentStatus
     {
         return match ($transactionStatus) {
             'settlement' => RemotePaymentStatus::Paid,
-            'capture' => $fraudStatus === 'challenge'
-                ? RemotePaymentStatus::Pending
-                : RemotePaymentStatus::Paid,
+            'capture' => match ($fraudStatus) {
+                'accept' => RemotePaymentStatus::Paid,
+                'deny' => RemotePaymentStatus::Failed,
+                default => RemotePaymentStatus::Pending,
+            },
             'pending' => RemotePaymentStatus::Pending,
             'deny', 'cancel', 'failure' => RemotePaymentStatus::Failed,
             'expire' => RemotePaymentStatus::Expired,
