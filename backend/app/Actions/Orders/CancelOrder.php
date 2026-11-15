@@ -2,10 +2,16 @@
 
 namespace App\Actions\Orders;
 
+use App\Actions\Payments\ApplyProviderPaymentEvent;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\PermissionName;
 use App\Exceptions\DomainException;
+use App\Integrations\Payments\CancelsProviderCharges;
+use App\Integrations\Payments\PaymentGateway;
+use App\Integrations\Payments\PaymentGatewayException;
+use App\Integrations\Payments\ProviderCancelOutcome;
+use App\Integrations\Payments\RemotePaymentStatus;
 use App\Models\Device;
 use App\Models\Order;
 use App\Models\Payment;
@@ -20,6 +26,8 @@ final class CancelOrder
 {
     public function __construct(
         private readonly AuditWriter $audit,
+        private readonly PaymentGateway $gateway,
+        private readonly ApplyProviderPaymentEvent $applyProviderEvent,
     ) {}
 
     public function handle(
@@ -29,6 +37,8 @@ final class CancelOrder
         ?Request $request = null,
     ): Order {
         $this->authorizeCancel($principal, $order);
+        $order->loadMissing('payments');
+        $this->releaseProviderCharges($order);
 
         return DB::transaction(function () use ($principal, $order, $reason, $request): Order {
             /** @var Order $locked */
@@ -123,6 +133,51 @@ final class CancelOrder
 
             return $locked;
         });
+    }
+
+    private function releaseProviderCharges(Order $order): void
+    {
+        if (! $this->gateway instanceof CancelsProviderCharges) {
+            return;
+        }
+
+        foreach ($order->payments as $payment) {
+            if (! $payment->isOpen() || ! $payment->isProviderBacked()) {
+                continue;
+            }
+
+            try {
+                $outcome = $this->gateway->cancelOpenCharge($payment);
+            } catch (PaymentGatewayException $e) {
+                throw new DomainException(
+                    $e->failureCode,
+                    'Payment provider could not cancel the charge. The order was not cancelled.',
+                    502,
+                );
+            }
+
+            if ($outcome !== ProviderCancelOutcome::AlreadySettled) {
+                continue;
+            }
+
+            $fresh = $payment->fresh() ?? $payment;
+            $this->applyProviderEvent->handle($fresh, RemotePaymentStatus::Paid, source: 'reconcile');
+            $fresh->refresh();
+
+            if (! $fresh->isPaid()) {
+                throw new DomainException(
+                    'upstream.payment_provider_unavailable',
+                    'The provider settled this charge, but the payment could not be recorded. The order was not cancelled.',
+                    502,
+                );
+            }
+
+            throw new DomainException(
+                'order.state_conflict',
+                'This payment has already settled and cannot be cancelled.',
+                409,
+            );
+        }
     }
 
     private function authorizeCancel(Device|User $principal, Order $order): void
