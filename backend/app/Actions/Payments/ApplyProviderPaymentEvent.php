@@ -2,6 +2,8 @@
 
 namespace App\Actions\Payments;
 
+use App\Enums\OrderStatus;
+use App\Enums\PaymentStatus;
 use App\Exceptions\DomainException;
 use App\Integrations\Payments\RemotePaymentStatus;
 use App\Models\Payment;
@@ -31,6 +33,16 @@ final class ApplyProviderPaymentEvent
             return;
         }
 
+        $payment->loadMissing('order');
+
+        if ($status === RemotePaymentStatus::Paid && $this->capturedAfterCancel($payment)) {
+            throw new DomainException(
+                'payment.settled_after_cancel',
+                'Provider captured funds after the payment was cancelled.',
+                409,
+            );
+        }
+
         if ($reportedAmount !== null && $reportedAmount !== (int) $payment->amount) {
             Log::warning('payment.provider_event.amount_mismatch', [
                 'payment_id' => $payment->id,
@@ -54,6 +66,10 @@ final class ApplyProviderPaymentEvent
                 RemotePaymentStatus::Pending, RemotePaymentStatus::Unknown => null,
             };
         } catch (DomainException $e) {
+            if ($e->errorCode === 'payment.settled_after_cancel') {
+                throw $e;
+            }
+
             Log::info('payment.provider_event.ignored', [
                 'payment_id' => $payment->id,
                 'status' => $status->value,
@@ -61,5 +77,14 @@ final class ApplyProviderPaymentEvent
                 'reason' => $e->errorCode,
             ]);
         }
+    }
+
+    private function capturedAfterCancel(Payment $payment): bool
+    {
+        if ($payment->status === PaymentStatus::Cancelled) {
+            return true;
+        }
+
+        return $payment->order?->status === OrderStatus::Cancelled;
     }
 }

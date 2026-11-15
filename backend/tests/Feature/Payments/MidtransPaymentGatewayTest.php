@@ -5,6 +5,8 @@ namespace Tests\Feature\Payments;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
+use App\Enums\RoleName;
+use App\Enums\TicketStatus;
 use App\Enums\WebhookProcessStatus;
 use App\Integrations\Payments\MidtransPaymentGateway;
 use App\Integrations\Payments\PaymentGateway;
@@ -263,6 +265,194 @@ class MidtransPaymentGatewayTest extends TestCase
         ]);
     }
 
+    public function test_cancel_voids_the_midtrans_charge_before_the_order_is_cancelled(): void
+    {
+        $payment = $this->seedProcessingMidtransPayment();
+
+        Http::fake([
+            'api.sandbox.midtrans.com/v2/*/cancel' => Http::response([
+                'status_code' => '200',
+                'status_message' => 'Success, transaction is canceled',
+                'transaction_id' => $payment->provider_payment_id,
+                'order_id' => $payment->payment_number,
+                'transaction_status' => 'cancel',
+                'gross_amount' => '103000.00',
+            ], 200),
+        ]);
+
+        $token = $this->userWithRole(RoleName::TicketOfficer)->createToken('phpunit')->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/api/v1/orders/'.$payment->order_id.'/cancel', [
+                'reason' => 'visitor left before paying',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', OrderStatus::Cancelled->value);
+
+        $this->assertSame(PaymentStatus::Cancelled, $payment->fresh()->status);
+        $this->assertSame(OrderStatus::Cancelled, $payment->order()->firstOrFail()->status);
+        Http::assertSent(function ($request) use ($payment): bool {
+            return $request->method() === 'POST'
+                && str_ends_with($request->url(), '/v2/'.$payment->payment_number.'/cancel');
+        });
+    }
+
+    public function test_cancel_keeps_the_order_when_midtrans_has_already_settled(): void
+    {
+        $payment = $this->seedProcessingMidtransPayment();
+
+        Http::fake([
+            'api.sandbox.midtrans.com/v2/*/cancel' => Http::response([
+                'status_code' => '412',
+                'status_message' => 'Merchant cannot modify the status of the transaction',
+            ], 200),
+            'api.sandbox.midtrans.com/v2/*/status' => Http::response([
+                'status_code' => '200',
+                'transaction_status' => 'settlement',
+                'fraud_status' => 'accept',
+                'order_id' => $payment->payment_number,
+                'gross_amount' => '103000.00',
+            ], 200),
+        ]);
+
+        $token = $this->userWithRole(RoleName::TicketOfficer)->createToken('phpunit')->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/api/v1/orders/'.$payment->order_id.'/cancel')
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'order.state_conflict');
+
+        $this->assertSame(PaymentStatus::Paid, $payment->fresh()->status);
+        $this->assertSame(OrderStatus::Paid, $payment->order()->firstOrFail()->status);
+        $this->assertSame(2, Ticket::query()->where('payment_id', $payment->id)->count());
+    }
+
+    public function test_cancel_leaves_the_order_open_when_midtrans_cancel_cannot_be_confirmed(): void
+    {
+        $payment = $this->seedProcessingMidtransPayment();
+
+        Http::fake([
+            'api.sandbox.midtrans.com/v2/*/cancel' => Http::response([
+                'status_code' => '500',
+                'status_message' => 'Internal Server Error',
+            ], 500),
+            'api.sandbox.midtrans.com/v2/*/status' => Http::response([
+                'status_code' => '500',
+                'status_message' => 'Internal Server Error',
+            ], 500),
+        ]);
+
+        $token = $this->userWithRole(RoleName::TicketOfficer)->createToken('phpunit')->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/api/v1/orders/'.$payment->order_id.'/cancel')
+            ->assertStatus(502)
+            ->assertJsonPath('error.code', 'upstream.payment_provider_unavailable');
+
+        $this->assertSame(PaymentStatus::Processing, $payment->fresh()->status);
+        $this->assertSame(OrderStatus::PendingPayment, $payment->order()->firstOrFail()->status);
+        $this->assertSame(0, Ticket::query()->count());
+    }
+
+    public function test_successful_midtrans_refund_voids_tickets(): void
+    {
+        $payment = $this->seedProcessingMidtransPayment();
+        $this->settle($payment);
+        $paid = $payment->fresh();
+
+        Http::fake([
+            'api.sandbox.midtrans.com/v2/*/refund' => Http::response([
+                'status_code' => '200',
+                'status_message' => 'Success, refund request is approved',
+                'transaction_status' => 'refund',
+                'refund_amount' => number_format((int) $paid->amount, 2, '.', ''),
+                'order_id' => $paid->payment_number,
+            ], 200),
+        ]);
+
+        $token = $this->userWithRole(RoleName::Finance)->createToken('phpunit')->plainTextToken;
+
+        $this->withIdempotency($token, 'midtrans-refund-ok')
+            ->postJson('/api/v1/payments/'.$paid->id.'/refund', [
+                'reason' => 'Customer left',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', PaymentStatus::Refunded->value);
+
+        $this->assertSame(PaymentStatus::Refunded, $paid->fresh()->status);
+        $this->assertSame(
+            2,
+            Ticket::query()->where('payment_id', $paid->id)->where('status', TicketStatus::Refunded->value)->count(),
+        );
+    }
+
+    public function test_http_200_refund_with_rejected_status_code_keeps_tickets(): void
+    {
+        $payment = $this->seedProcessingMidtransPayment();
+        $this->settle($payment);
+
+        Http::fake([
+            'api.sandbox.midtrans.com/v2/*/refund' => Http::response([
+                'status_code' => '412',
+                'status_message' => 'Merchant cannot modify the status of the transaction',
+            ], 200),
+        ]);
+
+        $token = $this->userWithRole(RoleName::Finance)->createToken('phpunit')->plainTextToken;
+
+        $this->withIdempotency($token, 'midtrans-refund-rejected')
+            ->postJson('/api/v1/payments/'.$payment->id.'/refund', [
+                'reason' => 'Customer left',
+            ])
+            ->assertStatus(502)
+            ->assertJsonPath('error.code', 'upstream.payment_provider_unavailable');
+
+        $this->assertSame(PaymentStatus::Paid, $payment->fresh()->status);
+        $this->assertSame(OrderStatus::Paid, $payment->order()->firstOrFail()->status);
+        $this->assertSame(
+            0,
+            Ticket::query()->where('payment_id', $payment->id)->where('status', TicketStatus::Refunded->value)->count(),
+        );
+        $this->assertSame(2, Ticket::query()->where('payment_id', $payment->id)->count());
+    }
+
+    public function test_settlement_after_local_cancel_is_not_treated_as_processed(): void
+    {
+        $payment = $this->seedProcessingMidtransPayment();
+        $payment->forceFill([
+            'status' => PaymentStatus::Cancelled,
+            'cancelled_at' => now(),
+        ])->save();
+        $payment->order()->update([
+            'status' => OrderStatus::Cancelled->value,
+            'cancelled_at' => now(),
+        ]);
+
+        $payload = [
+            'transaction_time' => '2026-09-29 21:00:00',
+            'transaction_status' => 'settlement',
+            'transaction_id' => $payment->provider_payment_id,
+            'status_message' => 'midtrans payment notification',
+            'status_code' => '200',
+            'payment_type' => 'qris',
+            'order_id' => $payment->payment_number,
+            'gross_amount' => '103000.00',
+            'fraud_status' => 'accept',
+        ];
+        $payload['signature_key'] = $this->midtransSignature($payload);
+
+        $this->postJson('/api/v1/webhooks/payments/midtrans', $payload)
+            ->assertOk();
+
+        $this->assertSame(PaymentStatus::Cancelled, $payment->fresh()->status);
+        $this->assertSame(0, Ticket::query()->count());
+        $this->assertDatabaseHas('payment_webhook_events', [
+            'provider' => 'midtrans',
+            'process_status' => WebhookProcessStatus::Failed->value,
+            'payment_id' => $payment->id,
+        ]);
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      */
@@ -299,5 +489,24 @@ class MidtransPaymentGatewayTest extends TestCase
             ->assertCreated();
 
         return Payment::query()->where('order_id', $orderPayload['id'])->firstOrFail();
+    }
+
+    private function settle(Payment $payment): void
+    {
+        $payload = [
+            'transaction_time' => '2026-09-29 21:00:00',
+            'transaction_status' => 'settlement',
+            'transaction_id' => $payment->provider_payment_id,
+            'status_message' => 'midtrans payment notification',
+            'status_code' => '200',
+            'payment_type' => 'qris',
+            'order_id' => $payment->payment_number,
+            'gross_amount' => '103000.00',
+            'fraud_status' => 'accept',
+        ];
+        $payload['signature_key'] = $this->midtransSignature($payload);
+
+        $this->postJson('/api/v1/webhooks/payments/midtrans', $payload)->assertOk();
+        $this->assertSame(PaymentStatus::Paid, $payment->fresh()->status);
     }
 }

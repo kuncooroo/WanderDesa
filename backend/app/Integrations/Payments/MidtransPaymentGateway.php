@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
 use JsonException;
 use Throwable;
 
-final class MidtransPaymentGateway implements PaymentGateway, QueriesRemotePaymentStatus, VerifiesPaymentWebhooks
+final class MidtransPaymentGateway implements CancelsProviderCharges, PaymentGateway, QueriesRemotePaymentStatus, VerifiesPaymentWebhooks
 {
     public function initiate(Payment $payment, Order $order): PaymentInitiation
     {
@@ -123,10 +123,21 @@ final class MidtransPaymentGateway implements PaymentGateway, QueriesRemotePayme
             );
         }
 
-        if ($response->failed()) {
+        /** @var array<string, mixed> $body */
+        $body = $response->json() ?? [];
+        $statusCode = (string) ($body['status_code'] ?? '');
+        $transactionStatus = strtolower((string) ($body['transaction_status'] ?? ''));
+        $refundAmount = $this->parseGrossAmount($body['refund_amount'] ?? null);
+
+        if ($response->failed()
+            || $statusCode !== '200'
+            || $transactionStatus !== 'refund'
+            || ($refundAmount !== null && $refundAmount !== (int) $payment->amount)) {
             Log::warning('payment.midtrans.refund_failed', [
                 'payment_id' => $payment->id,
                 'status' => $response->status(),
+                'status_code' => $statusCode,
+                'transaction_status' => $transactionStatus,
             ]);
 
             throw new PaymentGatewayException(
@@ -134,6 +145,48 @@ final class MidtransPaymentGateway implements PaymentGateway, QueriesRemotePayme
                 'upstream.payment_provider_unavailable',
             );
         }
+    }
+
+    public function cancelOpenCharge(Payment $payment): ProviderCancelOutcome
+    {
+        $serverKey = $this->serverKey();
+        $orderId = $payment->provider_reference ?: $payment->payment_number;
+
+        try {
+            $response = $this->client($serverKey)
+                ->post('/v2/'.$orderId.'/cancel');
+        } catch (ConnectionException) {
+            throw new PaymentGatewayException(
+                'Midtrans cancel unreachable.',
+                'upstream.payment_provider_unavailable',
+            );
+        }
+
+        /** @var array<string, mixed> $body */
+        $body = $response->json() ?? [];
+        $interpreted = $this->interpretCancelBody($body);
+
+        if ($interpreted !== null) {
+            return $interpreted;
+        }
+
+        try {
+            $remote = $this->fetchRemoteStatus($payment);
+        } catch (Throwable) {
+            throw new PaymentGatewayException(
+                'Midtrans cancel could not be confirmed.',
+                'upstream.payment_provider_unavailable',
+            );
+        }
+
+        return match ($remote) {
+            RemotePaymentStatus::Paid => ProviderCancelOutcome::AlreadySettled,
+            RemotePaymentStatus::Failed, RemotePaymentStatus::Expired => ProviderCancelOutcome::Cancelled,
+            default => throw new PaymentGatewayException(
+                'Midtrans cancel failed.',
+                'upstream.payment_provider_unavailable',
+            ),
+        };
     }
 
     public function verifyWebhookSignature(string $rawBody, ?string $signatureHeader): void
@@ -284,6 +337,29 @@ final class MidtransPaymentGateway implements PaymentGateway, QueriesRemotePayme
         }
 
         return $key;
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     */
+    private function interpretCancelBody(array $body): ?ProviderCancelOutcome
+    {
+        $transactionStatus = strtolower((string) ($body['transaction_status'] ?? ''));
+        $statusCode = (string) ($body['status_code'] ?? '');
+
+        if ($transactionStatus === 'settlement') {
+            return ProviderCancelOutcome::AlreadySettled;
+        }
+
+        if (in_array($transactionStatus, ['cancel', 'deny', 'expire', 'failure'], true)) {
+            return ProviderCancelOutcome::Cancelled;
+        }
+
+        if ($statusCode === '404') {
+            return ProviderCancelOutcome::Cancelled;
+        }
+
+        return null;
     }
 
     private function mapTransactionStatus(string $transactionStatus, string $fraudStatus): RemotePaymentStatus

@@ -304,7 +304,7 @@ class CheckoutSession extends ChangeNotifier {
 
   Future<void> changeTickets() async {
     _stopPoll();
-    await _cancelUnpaidQuietly();
+    await _cancelUnpaid();
     await _recovery.clear();
     order = null;
     payment = null;
@@ -319,7 +319,13 @@ class CheckoutSession extends ChangeNotifier {
 
   Future<void> cancelToIdle() async {
     _stopPoll();
-    await _cancelUnpaidQuietly();
+    final refused = await _cancelUnpaid();
+    if (refused && payment != null) {
+      await refreshFromProvider();
+      if (payment?.isPaid == true) {
+        return;
+      }
+    }
     await _recovery.clear();
     onFinished?.call();
   }
@@ -574,15 +580,17 @@ class CheckoutSession extends ChangeNotifier {
     await _recovery.write(snapshot);
   }
 
-  Future<void> _cancelUnpaidQuietly() async {
+  /// True when the server refused because the provider charge may already have settled.
+  Future<bool> _cancelUnpaid() async {
     final current = order;
     if (current == null || !current.isPendingPayment) {
-      return;
+      return false;
     }
     try {
       await _commerce.cancelOrder(current.id, reason: 'kiosk_session_end');
-    } on ApiException {
-      // Idle path must not invent success; ignore cancel transport errors.
+      return false;
+    } on ApiException catch (error) {
+      return error.code == 'order.state_conflict';
     }
   }
 
